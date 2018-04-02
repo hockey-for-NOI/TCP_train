@@ -27,6 +27,7 @@ class	PackedOutput : public std::unique_ptr<std::ofstream>
 {
 public:
 	PackedOutput() = delete;
+	void	discard();
 private:
 	PackedOutput(std::string const& filename);
 	~PackedOutput();

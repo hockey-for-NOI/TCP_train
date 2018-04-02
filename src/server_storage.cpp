@@ -27,7 +27,7 @@ PackedInput::PackedInput(std::string const& filename):
 
 PackedInput::~PackedInput() {
 	auto ptr = ServerStorage::get_instance();
-	p->close(m_filename);
+	if (get()) p->close(m_filename);
 }
 
 PackedOutput::PackedOutput(std::string const& filename):
@@ -36,9 +36,16 @@ PackedOutput::PackedOutput(std::string const& filename):
 {
 }
 
+void	PackedOutput::discard() {
+	auto ptr = ServerStorage::get_instance();
+	if (get()) p->close(m_filename);
+	remove(safety_encode(m_filename));
+	reset(nullptr);
+}
+
 PackedOutput::~PackedOutput() {
 	auto ptr = ServerStorage::get_instance();
-	p->close(m_filename);
+	if (get()) p->close(m_filename);
 }
 
 ServerStorage::ServerStorage()
