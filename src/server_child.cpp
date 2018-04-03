@@ -132,6 +132,7 @@ void	ServerChild::child_core()
 				auto &&fdesc = ServerStorage::get_instance()->write(m_buf);
 				unsigned filelen;
 				packed_read(pipe, &filelen, 4);
+				if (filelen > MAX_FILE_LEN) throw std::runtime_error("File Too Long.");
 				unsigned crc32 = 0;
 				for (unsigned i=BUF_SIZE; i<=filelen; i+=BUF_SIZE)
 				{
