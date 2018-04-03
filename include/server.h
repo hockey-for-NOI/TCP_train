@@ -1,6 +1,8 @@
 #pragma once
 
 #include "protocol.h"
+#include "server_storage.h"
+#include "server_scheduler.h"
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -15,7 +17,7 @@
 namespace	oi
 {
 
-class	ServerChild: public std::thread
+class	ServerChild
 {
 public:
 	static	const	int	BUF_SIZE = 8192;
@@ -23,16 +25,32 @@ public:
 	static	const	int	MAX_FILE_LEN = 1048576;
 	static	const	std::string	storage_path;
 	ServerChild() = delete;
-	ServerChild(std::mutex *global_mutex, std::condition_variable *cond_var, int *pipe);
-	inline	int	get_status() {return m_status.load();}
+	ServerChild(int m_id, ServerScheduler *scheduler,
+			std::mutex *global_mutex, std::condition_variable *cond_var, int *pipe);
 private:
-	std::mutex*	m_global_mutex;
+	int	m_id;
+	ServerScheduler	*m_scheduler;
+	std::mutex	*m_global_mutex;
 	std::condition_variable	*m_cond_var;
 	int	*m_pipe;
+	std::thread	m_thread;
 
 	char	m_buf[BUF_SIZE];
 
 	void	child_core();
+};
+
+class	Server
+{
+public:
+	static	const	int	CHILD_NUM = 16;
+	Server();
+private:
+	std::vector <ServerChild>	m_child;
+	std::vector <int>	m_pipe;
+	std::vector <std::condition_variable>	m_cond_var;
+	std::mutex	m_mutex;
+	ServerScheduler	m_scheduler;
 };
 
 }	// end namespace oi

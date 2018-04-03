@@ -1,6 +1,8 @@
 #include "server.h"
 #include "server_storage.h"
 
+#include <iostream>
+
 namespace	oi
 {
 
@@ -42,7 +44,23 @@ const unsigned CRC32[] = {
     0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
 };
 
-void	packed_read(int fd, char *buf, size_t size)
+}	// end anonymous namespace
+
+ServerChild::ServerChild(int id,
+		ServerScheduler *scheduler,
+		std::mutex *global_mutex,
+		std::condition_variable *cond_var,
+		int *pipe):
+	m_id(id),
+	m_scheduler(scheduler),
+	m_global_mutex(global_mutex),
+	m_cond_var(cond_var),
+	m_pipe(pipe),
+	m_thread([this](){child_core();}),
+{
+}
+
+void	ServerChild::packed_read(int fd, char *buf, size_t size)
 {
 	for (size_t tot = 0; tot < size; tot ++)
 	{
@@ -50,33 +68,28 @@ void	packed_read(int fd, char *buf, size_t size)
 		if (tmp == -1) throw std::runtime_error("Read Error.");
 		if (tmp == 0) throw std::runtime_error("Connection Closed.");
 		tot += tmp; buf += tmp;
+		m_scheduler->flush(m_id);
 	}
 }
 
-void	packed_write(int fd, char *buf, size_t size)
+void	ServerChild::packed_write(int fd, char *buf, size_t size)
 {
 	int tmp = write(fd, buf, size);
 	if (tmp != size) throw std::runtime_error("Connection Closed.");
+	m_scheduler->flush(m_id);
 }
 
-}	// end anonymous namespace
-
-ServerChild::ServerChild(std::mutex *global_mutex, std::condition_variable *cond_var, int *pipe):
-	std::thread([this](){child_core();}),
-	m_global_mutex(global_mutex),
-	m_cond_var(cond_var),
-	m_pipe(pipe);
-{
-}
 
 void	ServerChild::child_core()
 {
 	while (true)
 	{
-		std::unique_lock<std::mutex> lck(global_mutex);
+		std::unique_lock<std::mutex> lck(*m_global_mutex);
 		cond_var.wait(lck);
 		int pipe = *m_pipe;
 		lck.unlock();
+
+		m_scheduler->push(m_id, pipe);
 
 		try
 		{
@@ -142,9 +155,12 @@ void	ServerChild::child_core()
 		}
 		catch	(std::exception &e)
 		{
+			lck.lock();
+			cout << e.what() << endl;
+			lck.unlock();
 		}
 
-		m_status.store(0);
+		m_scheduler->remove(m_id);
 	}
 }
 
