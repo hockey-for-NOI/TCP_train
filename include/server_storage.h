@@ -13,31 +13,35 @@ class	PackedInput;
 class	PackedOutput;
 class	ServerStorage;
 
-class	PackedInput : public std::unique_ptr<std::ifstream>
+class	PackedInput : public std::shared_ptr<std::ifstream>
 {
 public:
-	PackedInput() = delete;
+	PackedInput();
+	~PackedInput();
 private:
 	PackedInput(std::string const& filename);
-	~PackedInput();
 	std::string	m_filename;
+
+	friend class ServerStorage;
 };
 
-class	PackedOutput : public std::unique_ptr<std::ofstream>
+class	PackedOutput : public std::shared_ptr<std::ofstream>
 {
 public:
-	PackedOutput() = delete;
+	PackedOutput();
+	~PackedOutput();
 	void	discard();
 private:
 	PackedOutput(std::string const& filename);
-	~PackedOutput();
 	std::string	m_filename;
+
+	friend class ServerStorage;
 };
 
 class	ServerStorage
 {
 public:
-	static	std::string	storage_root;
+	static	const	std::string	storage_root;
 	static	ServerStorage*	get_instance();
 
 	PackedInput	read(std::string const& filename);

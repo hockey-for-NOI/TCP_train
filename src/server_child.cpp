@@ -1,6 +1,7 @@
 #include "server.h"
 #include "server_storage.h"
 
+#include <cstring>
 #include <iostream>
 
 namespace	oi
@@ -56,23 +57,25 @@ ServerChild::ServerChild(int id,
 	m_global_mutex(global_mutex),
 	m_cond_var(cond_var),
 	m_pipe(pipe),
-	m_thread([this](){child_core();}),
+	m_thread([this](){child_core();})
 {
+	m_thread.detach();
 }
 
-void	ServerChild::packed_read(int fd, char *buf, size_t size)
+void	ServerChild::packed_read(int fd, void *buf, size_t size)
 {
+	char *cbuf = (char*)buf;
 	for (size_t tot = 0; tot < size; tot ++)
 	{
-		int tmp = read(fd, buf, size);
+		int tmp = read(fd, cbuf, size);
 		if (tmp == -1) throw std::runtime_error("Read Error.");
 		if (tmp == 0) throw std::runtime_error("Connection Closed.");
-		tot += tmp; buf += tmp;
+		tot += tmp; cbuf += tmp;
 		m_scheduler->flush(m_id);
 	}
 }
 
-void	ServerChild::packed_write(int fd, char *buf, size_t size)
+void	ServerChild::packed_write(int fd, void *buf, size_t size)
 {
 	int tmp = write(fd, buf, size);
 	if (tmp != size) throw std::runtime_error("Connection Closed.");
@@ -85,8 +88,9 @@ void	ServerChild::child_core()
 	while (true)
 	{
 		std::unique_lock<std::mutex> lck(*m_global_mutex);
-		cond_var.wait(lck);
+		m_cond_var->wait(lck);
 		int pipe = *m_pipe;
+		*m_pipe = -1;
 		lck.unlock();
 
 		m_scheduler->push(m_id, pipe);
@@ -108,7 +112,7 @@ void	ServerChild::child_core()
 
 			if (opc == Protocol::READ_MAGIC)
 			{
-				auto fdesc = ServerStorage::get_instance()->read(m_buf);
+				auto &&fdesc = ServerStorage::get_instance()->read(m_buf);
 				fdesc->seekg(0, std::ios_base::end);
 				unsigned filelen = fdesc->tellg();
 				packed_write(pipe, &filelen, 4);
@@ -118,14 +122,14 @@ void	ServerChild::child_core()
 					fdesc->read(m_buf, BUF_SIZE);
 					packed_write(pipe, m_buf, fdesc->gcount());
 					for (int j=0; j<fdesc->gcount(); j++)
-						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc >> 8);
+						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc32 >> 8);
 				}
 				crc32 ^= 0xffffffff;
 				packed_write(pipe, &crc32, 4);
 			}
 			else
 			{
-				auto fdesc = ServerStorage::get_instance()->write(m_buf);
+				auto &&fdesc = ServerStorage::get_instance()->write(m_buf);
 				unsigned filelen;
 				packed_read(pipe, &filelen, 4);
 				unsigned crc32 = 0;
@@ -134,14 +138,14 @@ void	ServerChild::child_core()
 					packed_read(pipe, m_buf, BUF_SIZE);
 					fdesc->write(m_buf, BUF_SIZE);
 					for (int j=0; j<BUF_SIZE; j++)
-						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc >> 8);
+						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc32 >> 8);
 				}
 				if (filelen %= BUF_SIZE)
 				{
 					packed_read(pipe, m_buf, filelen);
 					fdesc->write(m_buf, filelen);
 					for (int j=0; j<filelen; j++)
-						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc >> 8);
+						crc32 = CRC32[(crc32 ^ m_buf[j]) & 0xff] ^ (crc32 >> 8);
 				}
 				crc32 ^= 0xffffffff;
 				unsigned chk;
@@ -156,7 +160,7 @@ void	ServerChild::child_core()
 		catch	(std::exception &e)
 		{
 			lck.lock();
-			cout << e.what() << endl;
+			std::cout << e.what() << std::endl;
 			lck.unlock();
 		}
 

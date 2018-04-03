@@ -2,7 +2,7 @@
 
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/socked.h>
+#include <sys/socket.h>
 
 namespace	oi
 {
